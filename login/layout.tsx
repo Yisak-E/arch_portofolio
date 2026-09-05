@@ -1,4 +1,4 @@
-import Footer from "@/component/Footer";
+import Footer from "@/components/Footer";
 import Image from "next/image";
 
 
