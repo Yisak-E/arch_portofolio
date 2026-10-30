@@ -2,114 +2,141 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireOwner } from "@/lib/auth";
-import type { ActionState, ProjectImage } from "@/lib/types";
-import { nullable, slugify, str } from "@/lib/utils";
+import { friendlyError, requireStaff } from "@/lib/auth";
+import { BUCKET, VISIBILITY_LABELS } from "@/lib/constants";
+import { coverFrom, parseDetails, parseMedia, syncMedia } from "@/lib/project-save";
+import type { ActionState } from "@/lib/types";
+import { slugify, str } from "@/lib/utils";
 
-const BUCKET = "portfolio";
+type CreditInput = {
+  architect_id: string;
+  credit_role: string | null;
+  can_edit: boolean;
+  can_upload: boolean;
+};
 
-function parseImages(raw: string): ProjectImage[] {
+function parseCredits(raw: string): CreditInput[] {
   try {
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
+    const seen = new Set<string>();
     return arr
-      .filter((i) => typeof i?.url === "string" && typeof i?.path === "string")
-      .map((i, idx) => ({
-        url: i.url,
-        path: i.path,
-        caption: typeof i.caption === "string" && i.caption.trim() ? i.caption.trim().slice(0, 300) : null,
-        sort_order: idx,
+      .filter((c) => typeof c?.architect_id === "string" && c.architect_id && !seen.has(c.architect_id) && seen.add(c.architect_id))
+      .map((c) => ({
+        architect_id: c.architect_id,
+        credit_role: typeof c.credit_role === "string" && c.credit_role.trim() ? c.credit_role.trim().slice(0, 120) : null,
+        can_edit: !!c.can_edit,
+        can_upload: !!c.can_upload,
       }));
   } catch {
     return [];
   }
 }
 
+function url(v: string) {
+  if (!v) return null;
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+}
+
+/** FR-013, FR-014, FR-016..FR-020 */
 export async function saveProject(_prev: ActionState, form: FormData): Promise<ActionState> {
-  const { supabase } = await requireOwner();
+  const { supabase } = await requireStaff();
+
+  const parsed = parseDetails(form);
+  if ("error" in parsed) return { error: parsed.error };
 
   const id = str(form, "id", 64) || null;
-  const title = str(form, "title", 200);
-  if (!title) return { error: "Please give the project a title." };
+  const media = parseMedia(str(form, "media", 200_000));
+  const credits = parseCredits(str(form, "credits", 50_000));
 
-  const yearRaw = str(form, "year", 4);
-  const year = yearRaw ? Number(yearRaw) : null;
-  if (year !== null && (Number.isNaN(year) || year < 1900 || year > 2100)) {
-    return { error: "Year should be a 4-digit year." };
+  const visibility = str(form, "visibility", 10);
+  if (!(visibility in VISIBILITY_LABELS)) return { error: "Choose a visibility." };
+
+  // FR-019: shared project needs an original architect (existing, or create a new card by name).
+  const isShared = form.get("is_shared") === "on";
+  let originalArchitectId: string | null = null;
+  if (isShared) {
+    originalArchitectId = str(form, "original_architect_id", 64) || null;
+    const newName = str(form, "original_architect_name", 120);
+    if (!originalArchitectId && newName) {
+      const { data, error } = await supabase.from("architects").insert({ name: newName }).select("id").single();
+      if (error) return { error: friendlyError(error.message) };
+      originalArchitectId = data.id;
+    }
+    if (!originalArchitectId) return { error: "A shared project needs the original architect's name." };
   }
 
-  const images = parseImages(str(form, "images", 100_000));
-
-  // Unique, URL-friendly slug.
-  let slug = slugify(str(form, "slug", 80) || title) || "project";
+  let slug = slugify(str(form, "slug", 80) || parsed.row.title) || "project";
   const { data: clash } = await supabase.from("projects").select("id").eq("slug", slug).maybeSingle();
   if (clash && clash.id !== id) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
 
   const row = {
-    title,
+    ...parsed.row,
     slug,
-    summary: nullable(str(form, "summary", 400)),
-    description: nullable(str(form, "description", 20_000)),
-    category: nullable(str(form, "category", 80)),
-    location: nullable(str(form, "location", 120)),
-    year,
-    area: nullable(str(form, "area", 60)),
-    software: nullable(str(form, "software", 200)),
-    published: form.get("published") === "on",
-    featured: form.get("featured") === "on",
+    visibility,
+    // Drafts and private work never appear on the home page.
+    featured: visibility === "public" && form.get("featured") === "on",
+    is_shared: isShared,
+    original_architect_id: originalArchitectId,
+    source_url: isShared ? url(str(form, "source_url", 500)) : null,
     sort_order: Number(str(form, "sort_order", 6)) || 0,
-    cover_url: images[0]?.url ?? null,
-    updated_at: new Date().toISOString(),
+    cover_url: coverFrom(media),
   };
 
   let projectId = id;
-  let oldPaths: string[] = [];
-
   if (id) {
-    const { data: old } = await supabase.from("project_images").select("path").eq("project_id", id);
-    oldPaths = (old ?? []).map((o) => o.path);
     const { error } = await supabase.from("projects").update(row).eq("id", id);
-    if (error) return { error: error.message };
-    await supabase.from("project_images").delete().eq("project_id", id);
+    if (error) return { error: friendlyError(error.message) };
   } else {
     const { data, error } = await supabase.from("projects").insert(row).select("id").single();
-    if (error) return { error: error.message };
+    if (error) return { error: friendlyError(error.message) };
     projectId = data.id;
   }
 
-  if (images.length) {
-    const { error } = await supabase
-      .from("project_images")
-      .insert(images.map((img) => ({ ...img, project_id: projectId })));
-    if (error) return { error: `Project saved, but images failed: ${error.message}` };
+  const mediaError = await syncMedia(supabase, projectId!, media);
+  if (mediaError) return { error: `Project saved, but media failed: ${friendlyError(mediaError)}` };
+
+  // Credits: replace the list, keeping order (FR-020/021).
+  const { data: oldCredits } = await supabase.from("project_collaborators").select("architect_id").eq("project_id", projectId!);
+  const keep = new Set(credits.map((c) => c.architect_id));
+  const toDelete = (oldCredits ?? []).map((c) => c.architect_id).filter((a) => !keep.has(a));
+  if (toDelete.length) {
+    await supabase.from("project_collaborators").delete().eq("project_id", projectId!).in("architect_id", toDelete);
+  }
+  const existing = new Set((oldCredits ?? []).map((c) => c.architect_id));
+  for (const [i, c] of credits.entries()) {
+    const fields = { ...c, sort_order: i };
+    const { error } = existing.has(c.architect_id)
+      ? await supabase.from("project_collaborators").update(fields).eq("project_id", projectId!).eq("architect_id", c.architect_id)
+      : await supabase.from("project_collaborators").insert({ ...fields, project_id: projectId });
+    if (error) return { error: `Project saved, but credits failed: ${friendlyError(error.message)}` };
   }
 
-  // Delete files that were removed from the project.
-  const keep = new Set(images.map((i) => i.path));
-  const orphans = oldPaths.filter((p) => !keep.has(p));
-  if (orphans.length) await supabase.storage.from(BUCKET).remove(orphans);
-
   revalidatePath("/", "layout");
-  redirect(`/dashboard/projects?saved=${encodeURIComponent(title)}`);
+  redirect(`/dashboard/projects?saved=${encodeURIComponent(parsed.row.title)}`);
 }
 
+/** FR-015 */
 export async function deleteProject(form: FormData) {
-  const { supabase } = await requireOwner();
+  const { supabase } = await requireStaff();
   const id = str(form, "id", 64);
   if (!id) return;
 
-  const { data: imgs } = await supabase.from("project_images").select("path").eq("project_id", id);
-  await supabase.from("projects").delete().eq("id", id);
-  const paths = (imgs ?? []).map((i) => i.path);
-  if (paths.length) await supabase.storage.from(BUCKET).remove(paths);
+  const { data: files } = await supabase.from("project_media").select("path").eq("project_id", id);
+  const { error } = await supabase.from("projects").delete().eq("id", id);
+  if (!error && files?.length) await supabase.storage.from(BUCKET).remove(files.map((f) => f.path));
 
   revalidatePath("/", "layout");
 }
 
-export async function togglePublished(form: FormData) {
-  const { supabase } = await requireOwner();
-  const id = str(form, "id", 64);
-  const published = form.get("published") === "true";
-  await supabase.from("projects").update({ published, updated_at: new Date().toISOString() }).eq("id", id);
+/** FR-017: quick visibility change from the list. */
+export async function setVisibility(form: FormData) {
+  const { supabase } = await requireStaff();
+  const visibility = str(form, "visibility", 10);
+  if (!(visibility in VISIBILITY_LABELS)) return;
+  const patch: Record<string, unknown> = { visibility };
+  if (visibility !== "public") patch.featured = false;
+  await supabase.from("projects").update(patch).eq("id", str(form, "id", 64));
   revalidatePath("/", "layout");
 }
+
