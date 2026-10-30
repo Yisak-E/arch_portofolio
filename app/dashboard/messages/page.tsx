@@ -1,99 +1,63 @@
 import Link from "next/link";
-import { requireOwner } from "@/lib/auth";
-import type { Message } from "@/lib/types";
+import { requireStaff } from "@/lib/auth";
+import type { Conversation } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
-import ConfirmButton from "../ConfirmButton";
-import { deleteMessage, setRead } from "./actions";
 
-export default async function MessagesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ filter?: string }>;
-}) {
-  const { filter } = await searchParams;
-  const { supabase } = await requireOwner();
+const TABS = [
+  { key: "inbox", label: "Inbox" },
+  { key: "unread", label: "Unread" },
+  { key: "archived", label: "Archived" },
+];
+
+/** FR-022 */
+export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab = "inbox" } = await searchParams;
+  const { supabase } = await requireStaff();
 
   let query = supabase
-    .from("messages")
-    .select("*, projects(title, slug)")
-    .order("created_at", { ascending: false });
-  if (filter === "unread") query = query.eq("is_read", false);
+    .from("conversations")
+    .select("*, projects(title, slug), profiles(full_name, email)")
+    .order("last_message_at", { ascending: false });
+  if (tab === "archived") query = query.eq("status", "archived");
+  else query = query.eq("status", "open");
+  if (tab === "unread") query = query.eq("owner_unread", true);
   const { data } = await query;
-  const messages = (data ?? []) as Message[];
+  const conversations = (data ?? []) as Conversation[];
 
   return (
     <div className="max-w-4xl">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="font-serif text-3xl">Messages</h1>
-        <div className="flex gap-2 text-sm">
+      <h1 className="font-serif text-3xl">Messages</h1>
+      <div className="mt-6 flex gap-2 text-sm">
+        {TABS.map((t) => (
           <Link
-            href="/dashboard/messages"
-            className={`rounded-full border px-4 py-1.5 ${filter !== "unread" ? "border-ink bg-ink text-paper" : "border-line"}`}
+            key={t.key}
+            href={`/dashboard/messages?tab=${t.key}`}
+            className={`rounded-full border px-4 py-1.5 ${tab === t.key ? "border-ink bg-ink text-paper" : "border-line"}`}
           >
-            All
+            {t.label}
           </Link>
-          <Link
-            href="/dashboard/messages?filter=unread"
-            className={`rounded-full border px-4 py-1.5 ${filter === "unread" ? "border-ink bg-ink text-paper" : "border-line"}`}
-          >
-            Unread
-          </Link>
-        </div>
+        ))}
       </div>
 
-      {messages.length === 0 ? (
-        <p className="mt-10 text-muted">No messages here.</p>
+      {conversations.length === 0 ? (
+        <p className="mt-10 text-muted">Nothing here.</p>
       ) : (
-        <ul className="mt-8 space-y-4">
-          {messages.map((m) => (
-            <li
-              key={m.id}
-              className={`rounded-lg border bg-panel p-5 ${m.is_read ? "border-line" : "border-ink"}`}
-            >
-              <details open={!m.is_read}>
-                <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className={`${m.is_read ? "" : "font-semibold"}`}>
-                      {!m.is_read && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-accent" />}
-                      {m.subject}
-                    </p>
-                    <p className="mt-0.5 text-sm text-muted">
-                      {m.sender_name} · {m.sender_email}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted">{formatDate(m.created_at)}</span>
-                </summary>
-
-                {m.projects && (
-                  <p className="mt-3 text-xs text-muted">
-                    About project:{" "}
-                    <Link href={`/projects/${m.projects.slug}`} target="_blank" className="underline">
-                      {m.projects.title}
-                    </Link>
+        <ul className="mt-8 divide-y divide-line rounded-lg border border-line bg-panel">
+          {conversations.map((c) => (
+            <li key={c.id}>
+              <Link href={`/dashboard/messages/${c.id}`} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-paper">
+                <div className="min-w-0">
+                  <p className={`truncate ${c.owner_unread ? "font-semibold" : ""}`}>
+                    {c.owner_unread && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-accent" />}
+                    {c.subject}
                   </p>
-                )}
-                <p className="mt-4 whitespace-pre-line text-sm leading-7">{m.body}</p>
-
-                <div className="mt-5 flex flex-wrap items-center gap-4 text-sm">
-                  <a
-                    href={`mailto:${m.sender_email}?subject=${encodeURIComponent(`Re: ${m.subject}`)}`}
-                    className="btn !py-1.5"
-                  >
-                    Reply by email
-                  </a>
-                  <form action={setRead}>
-                    <input type="hidden" name="id" value={m.id} />
-                    <input type="hidden" name="is_read" value={(!m.is_read).toString()} />
-                    <button className="text-muted hover:text-ink">
-                      Mark as {m.is_read ? "unread" : "read"}
-                    </button>
-                  </form>
-                  <form action={deleteMessage}>
-                    <input type="hidden" name="id" value={m.id} />
-                    <ConfirmButton message="Delete this message?">Delete</ConfirmButton>
-                  </form>
+                  <p className="truncate text-sm text-muted">
+                    {c.profiles?.full_name || "Unknown"} · {c.profiles?.email}
+                    {c.projects && ` · about ${c.projects.title}`}
+                  </p>
                 </div>
-              </details>
+                <span className="shrink-0 text-xs text-muted">{formatDate(c.last_message_at)}</span>
+              </Link>
             </li>
           ))}
         </ul>
