@@ -1,8 +1,8 @@
-import { requireOwner } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import PasswordForm from "./PasswordForm";
 
 export default async function SettingsPage() {
-  const { user } = await requireOwner();
+  const { user } = await requireStaff();
 
   return (
     <div className="max-w-xl">

@@ -1,77 +1,50 @@
 # Architecture Portfolio
 
-A portfolio site for an architecture student, built with **Next.js 15 (App Router)**, **Tailwind CSS v4** and **Supabase** (Postgres database, image storage and sign-in).
+A portfolio platform for an architecture student, built with **Next.js 15 (App Router)**, **Tailwind CSS v4** and **Supabase** (Postgres with Row Level Security, Auth, Storage).
 
-## What it does
+The full, refined requirement list (FR-001 to FR-040), with acceptance criteria and where each one is implemented, is in **[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)**.
 
-| Who | Can do |
+## Roles at a glance
+
+| Role | What they can do |
 |---|---|
-| **Anyone** (no account) | Browse the home page, all published projects (photos, drawings, descriptions, facts), the About page, and filter projects by category. |
-| **Signed-in visitor** (Google or email + password) | Everything above, plus send her a message from **Contact** — optionally about a specific project. |
-| **Owner** (her) | A private **Dashboard** to add / edit / delete / reorder projects, upload images with captions, publish or hide drafts, feature projects on the home page, read and manage messages, and edit her profile, portrait, CV and links. |
+| **Visitor** (signed out) | Browse, search and filter public projects; view project details, credits and the owner's profile |
+| **Client** (any registered user) | Everything above, plus message the owner, submit and track collaboration requests, report content, and manage their own profile |
+| **Collaborating architect** | Accept invitations, see assigned projects (including private and draft), edit details and upload media where permitted, and manage their public credit card |
+| **Portfolio owner** | Full dashboard: projects (Public/Private/Draft), media, shared projects, credits, collaborators and invitations, inbox, requests, profile; plus all admin tools |
+| **Administrator** | Dashboard access plus user management, reported content and audit log |
 
-Security is enforced **in the database** (Row Level Security), not only in the UI. Visitors can only see published projects, can only send messages as themselves (max 5 per hour), and can never make themselves the owner.
+All permissions are enforced in the database (RLS + triggers), not only in the UI.
 
 ## Project structure
 
 ```
 app/
-  (site)/            public pages: home, projects, projects/[slug], about, contact
-  (auth)/            login, register (+ Google sign-in)
-  auth/callback      handles Google / email-confirmation redirects
-  auth/signout
-  dashboard/         owner-only: overview, projects, messages, profile, settings
-components/          header, footer, project card, image uploader, form bits
-lib/                 Supabase clients, auth helpers, types
-supabase/schema.sql  tables, security policies, storage bucket
-middleware.ts        keeps the login session fresh, guards /dashboard
+  (site)/              public pages: home, projects (search/filter), projects/[slug], about, contact
+  (site)/account/      signed-in area: profile, messages, requests, notifications, invitations, my projects
+  (auth)/              login, register (email + Google)
+  auth/                OAuth/email callback, sign-out
+  dashboard/           owner/admin: overview, projects, collaborators, messages, requests, profile,
+                       users, reports, audit log, settings
+components/            header, notification bell, cards, media uploader, message thread, forms
+lib/                   Supabase clients, session/role helpers, types, constants, project search, save helpers
+supabase/schema.sql    complete database schema (tables, RLS, triggers, RPCs, storage)
+supabase/migrations/   one-off upgrade scripts that were applied to the live project
+docs/REQUIREMENTS.md   functional requirements
 ```
 
-## Setup (about 15 minutes)
+## Setup
 
-### 1. Create the Supabase project
-1. Sign up at [supabase.com](https://supabase.com) and create a new project (the free tier is enough).
-2. Open **SQL Editor → New query**, paste the contents of `supabase/schema.sql` and click **Run**.
-
-### 2. Configure environment variables
-```bash
-cp .env.example .env.local
-```
-Fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from **Project Settings → API**.
-
-### 3. Configure sign-in
-In Supabase → **Authentication → URL Configuration**:
-- **Site URL**: `http://localhost:3000` (later: your real domain)
-- **Redirect URLs**: add `http://localhost:3000/auth/callback` and `https://YOUR-DOMAIN/auth/callback`
-
-**Google sign-in** (Authentication → Sign In / Providers → Google):
-1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an **OAuth client ID** (type: Web application).
-2. Add the **Authorized redirect URI** shown in Supabase's Google provider panel (looks like `https://YOUR-PROJECT.supabase.co/auth/v1/callback`).
-3. Paste the Google Client ID and Secret into Supabase and enable the provider.
-
-Email + password works out of the box. Supabase sends a confirmation email to new accounts.
-
-### 4. Run it
-```bash
-npm install
-npm run dev
-```
-Open http://localhost:3000.
-
-### 5. Make her the owner
-1. She opens the site, clicks **Sign in**, and creates her account (Google or email).
-2. In Supabase **SQL Editor**, run (with her email):
-   ```sql
-   update public.profiles set role = 'owner' where email = 'her-email@example.com';
-   ```
-3. She refreshes the page: a **Dashboard** link appears in the header.
-
-### 6. (Optional) Email her when a message arrives
-Create a free [Resend](https://resend.com) account and set `RESEND_API_KEY` and `OWNER_NOTIFY_EMAIL` in `.env.local`. Without it, messages still arrive in her dashboard inbox.
-
-## Deploying
-Deploy to [Vercel](https://vercel.com): import the GitHub repo, add the same environment variables (with `NEXT_PUBLIC_SITE_URL` set to the real domain), and add the production `/auth/callback` URL to Supabase's Redirect URLs.
+1. **Supabase project:** the live project `arch-portfolio` already has the schema applied. For a fresh project, run `supabase/schema.sql` in the SQL Editor.
+2. **Environment:** copy `.env.example` to `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+3. **Auth URLs:** in Supabase → Authentication → URL Configuration, set the Site URL and add `http://localhost:3000/auth/callback` (and your production `/auth/callback`) to the Redirect URLs.
+4. **Google sign-in (optional):** create an OAuth client in Google Cloud. Its redirect URI is `https://<project-ref>.supabase.co/auth/v1/callback`. Paste the client ID and secret into Supabase → Providers → Google.
+5. **Run:** `npm install` then `npm run dev`.
+6. **Owner:** after she signs up, run `update public.profiles set role = 'owner' where email = '…';` (already done for the live project).
+7. **Owner email alerts (optional):** set `RESEND_API_KEY` and `OWNER_NOTIFY_EMAIL`. In-app notifications work without them.
 
 ## Notes
-- Images are stored in the public `portfolio` bucket. Files from draft projects are not listed anywhere public, but anyone with the exact file URL can open them.
-- Removing an image from a project, or deleting a project, also deletes its files from storage.
+
+- Files live in the public `portfolio` bucket. Private/draft project files are not listed publicly, but anyone with a file's exact URL can open it.
+- Rate limits: 5 new conversations/hour, 20 messages/hour, 5 requests/day, 10 reports/day per user.
+- Recommended: enable **Leaked password protection** in Supabase → Authentication → Settings.
