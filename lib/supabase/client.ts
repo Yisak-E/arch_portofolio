@@ -1,8 +1,9 @@
+import type { Database } from "@/lib/database.types";
 import { createBrowserClient } from "@supabase/ssr";
 
 /** Supabase client for use in Client Components (e.g. image uploads). */
 export function createClient() {
-  return createBrowserClient(
+  return createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );

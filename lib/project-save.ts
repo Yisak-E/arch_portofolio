@@ -6,12 +6,12 @@ import { nullable, str } from "./utils";
 /** Descriptive fields editable by the owner and by collaborators with "can edit". */
 export function parseDetails(form: FormData) {
   const title = str(form, "title", 200);
-  if (!title) return { error: "Please give the project a title." } as const;
+  if (!title) return { error: "Please give the project a title." };
 
   const yearRaw = str(form, "year", 4);
   const year = yearRaw ? Number(yearRaw) : null;
   if (year !== null && (!Number.isInteger(year) || year < 1900 || year > 2100)) {
-    return { error: "Year should be a 4-digit year." } as const;
+    return { error: "Year should be a 4-digit year." };
   }
 
   const status = str(form, "status", 20);
@@ -36,7 +36,7 @@ export function parseDetails(form: FormData) {
       area: nullable(str(form, "area", 60)),
       status: status in STATUS_LABELS ? status : "completed",
     },
-  } as const;
+  };
 }
 
 type IncomingMedia = {

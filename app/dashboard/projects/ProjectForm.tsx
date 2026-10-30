@@ -32,8 +32,8 @@ export default function ProjectForm({ project, architects }: { project?: Project
     (project?.project_collaborators ?? []).map((c) => ({
       architect_id: c.architect_id,
       credit_role: c.credit_role ?? "",
-      can_edit: c.can_edit,
-      can_upload: c.can_upload,
+      can_edit: c.can_edit ?? false,
+      can_upload: c.can_upload ?? false,
     }))
   );
 

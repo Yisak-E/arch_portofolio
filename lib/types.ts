@@ -46,10 +46,10 @@ export type ProjectCredit = {
   project_id?: string;
   architect_id: string;
   credit_role: string | null;
-  can_edit: boolean;
-  can_upload: boolean;
+  can_edit?: boolean;
+  can_upload?: boolean;
   sort_order: number;
-  architects?: Pick<Architect, "id" | "name" | "title" | "website" | "profile_id"> | null;
+  architects?: (Pick<Architect, "id" | "name" | "title"> & Partial<Pick<Architect, "website" | "profile_id">>) | null;
 };
 
 export type Project = {
