@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
+import type { Database } from "@/lib/database.types";
 import type { Conversation } from "@/lib/types";
+
+type TableName = keyof Database["public"]["Tables"];
 import { formatDate } from "@/lib/utils";
 
 /** FR-025 */
 export default async function DashboardPage() {
   const { supabase } = await requireStaff();
-  const count = (table: string, filter?: (q: any) => any) => {
-    let q = supabase.from(table).select("id", { count: "exact", head: true });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const count = (table: TableName, filter?: (q: any) => any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q: any = supabase.from(table).select("id", { count: "exact", head: true });
     if (filter) q = filter(q);
     return q.then((r: { count: number | null }) => r.count ?? 0);
   };

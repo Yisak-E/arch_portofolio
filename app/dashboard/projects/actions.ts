@@ -108,7 +108,7 @@ export async function saveProject(_prev: ActionState, form: FormData): Promise<A
     const fields = { ...c, sort_order: i };
     const { error } = existing.has(c.architect_id)
       ? await supabase.from("project_collaborators").update(fields).eq("project_id", projectId!).eq("architect_id", c.architect_id)
-      : await supabase.from("project_collaborators").insert({ ...fields, project_id: projectId });
+      : await supabase.from("project_collaborators").insert({ ...fields, project_id: projectId! });
     if (error) return { error: `Project saved, but credits failed: ${friendlyError(error.message)}` };
   }
 
@@ -134,7 +134,7 @@ export async function setVisibility(form: FormData) {
   const { supabase } = await requireStaff();
   const visibility = str(form, "visibility", 10);
   if (!(visibility in VISIBILITY_LABELS)) return;
-  const patch: Record<string, unknown> = { visibility };
+  const patch: { visibility: string; featured?: boolean } = { visibility };
   if (visibility !== "public") patch.featured = false;
   await supabase.from("projects").update(patch).eq("id", str(form, "id", 64));
   revalidatePath("/", "layout");

@@ -18,7 +18,7 @@ grant usage on schema private to anon, authenticated;
 create table if not exists public.profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
   email         text,
-  full_name     text,
+  full_name     text not null default '',
   role          text not null default 'client'
                 check (role in ('client', 'architect', 'owner', 'admin')),
   phone         text,

@@ -40,7 +40,7 @@ export default async function HomePage({
       )}
 
       <section className="py-20 sm:py-28">
-        <p className="eyebrow">{profile?.headline ?? "Architecture student"}</p>
+        <p className="eyebrow">{profile?.headline ?? "Architecture Student"}</p>
         <h1 className="mt-4 max-w-3xl font-serif text-4xl leading-tight sm:text-6xl">
           {profile?.full_name ?? "Portfolio"}
         </h1>
