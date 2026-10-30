@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import NotificationBell from "./NotificationBell";
 
 const nav = [
   { href: "/projects", label: "Projects" },
@@ -9,15 +9,14 @@ const nav = [
 ];
 
 export default async function SiteHeader() {
-  const { user, isOwner } = await getSession();
-  const supabase = await createClient();
-  const { data: profile } = await supabase.from("site_profile").select("full_name").single();
+  const { supabase, user, isStaff } = await getSession();
+  const { data: site } = await supabase.from("site_profile").select("full_name").single();
 
   return (
     <header className="border-b border-line">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
         <Link href="/" className="font-serif text-xl tracking-tight">
-          {profile?.full_name ?? "Portfolio"}
+          {site?.full_name ?? "Portfolio"}
         </Link>
 
         <nav className="flex flex-wrap items-center gap-5 text-sm">
@@ -26,15 +25,21 @@ export default async function SiteHeader() {
               {n.label}
             </Link>
           ))}
-          {isOwner && (
+          {isStaff && (
             <Link href="/dashboard" className="font-medium text-accent">
               Dashboard
             </Link>
           )}
           {user ? (
-            <form action="/auth/signout" method="post">
-              <button className="text-muted transition hover:text-ink">Sign out</button>
-            </form>
+            <>
+              <NotificationBell userId={user.id} />
+              <Link href="/account" className="text-muted transition hover:text-ink">
+                Account
+              </Link>
+              <form action="/auth/signout" method="post">
+                <button className="text-muted transition hover:text-ink">Sign out</button>
+              </form>
+            </>
           ) : (
             <Link href="/login" className="btn-outline !px-4 !py-1.5">
               Sign in
