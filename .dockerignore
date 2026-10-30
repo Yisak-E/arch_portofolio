@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+.git
+.gitignore
+.vercel
+.env
+.env*.local
+*.tgz
+*.tsbuildinfo
+npm-debug.log*
+Dockerfile
+docker-compose.yml
+.dockerignore
+docs
+supabase
+README.md
