@@ -18,7 +18,6 @@ export default async function ContactPage({
       .from("projects")
       .select("id, title")
       .eq("slug", projectSlug)
-      .eq("published", true)
       .maybeSingle();
     project = data;
   }
@@ -44,6 +43,19 @@ export default async function ContactPage({
           </>
         )}
       </p>
+
+      {user && (
+        <p className="mt-4 text-sm text-muted">
+          Planning a project together?{" "}
+          <Link href="/account/requests" className="text-ink underline">
+            Send a collaboration request
+          </Link>{" "}
+          to track its status.{" "}
+          <Link href="/account/messages" className="text-ink underline">
+            Your conversations
+          </Link>
+        </p>
+      )}
 
       <div className="mt-10">
         {user ? (
