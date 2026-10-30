@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f4f1ec;
+  --ink: #1b1b1a;
+  --muted: #6b6760;
+  --line: #d9d3c9;
+  --accent: #a4502c;
+  --panel: #ffffff;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-panel: var(--panel);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-fraunces);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Small reusable pieces */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-paper transition hover:bg-accent disabled:opacity-50;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-ink px-5 py-2.5 text-sm font-medium text-ink transition hover:bg-ink hover:text-paper disabled:opacity-50;
+  }
+  .input {
+    @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-ink;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wider text-muted;
+  }
+  .eyebrow {
+    @apply text-xs font-medium uppercase tracking-[0.2em] text-muted;
+  }
+}
