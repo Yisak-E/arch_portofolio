@@ -1,22 +1,46 @@
 import Link from "next/link";
-import { requireOwner } from "@/lib/auth";
-import type { Message } from "@/lib/types";
+import { requireStaff } from "@/lib/auth";
+import type { Conversation } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
+/** FR-025 */
 export default async function DashboardPage() {
-  const { supabase } = await requireOwner();
+  const { supabase } = await requireStaff();
+  const count = (table: string, filter?: (q: any) => any) => {
+    let q = supabase.from(table).select("id", { count: "exact", head: true });
+    if (filter) q = filter(q);
+    return q.then((r: { count: number | null }) => r.count ?? 0);
+  };
 
-  const [published, drafts, unread, recent] = await Promise.all([
-    supabase.from("projects").select("id", { count: "exact", head: true }).eq("published", true),
-    supabase.from("projects").select("id", { count: "exact", head: true }).eq("published", false),
-    supabase.from("messages").select("id", { count: "exact", head: true }).eq("is_read", false),
-    supabase.from("messages").select("*").order("created_at", { ascending: false }).limit(5),
-  ]);
+  const [total, pub, priv, draft, shared, collaborators, conversations, unread, openRequests, openReports, recent] =
+    await Promise.all([
+      count("projects"),
+      count("projects", (q) => q.eq("visibility", "public")),
+      count("projects", (q) => q.eq("visibility", "private")),
+      count("projects", (q) => q.eq("visibility", "draft")),
+      count("projects", (q) => q.eq("is_shared", true)),
+      count("architects"),
+      count("conversations"),
+      count("conversations", (q) => q.eq("owner_unread", true)),
+      count("collaboration_requests", (q) => q.in("status", ["submitted", "under_review"])),
+      count("reports", (q) => q.eq("status", "open")),
+      supabase
+        .from("conversations")
+        .select("*, profiles(full_name, email)")
+        .order("last_message_at", { ascending: false })
+        .limit(5),
+    ]);
 
   const stats = [
-    { label: "Published projects", value: published.count ?? 0, href: "/dashboard/projects" },
-    { label: "Drafts", value: drafts.count ?? 0, href: "/dashboard/projects" },
-    { label: "Unread messages", value: unread.count ?? 0, href: "/dashboard/messages" },
+    { label: "Total projects", value: total, href: "/dashboard/projects" },
+    { label: "Public", value: pub, href: "/dashboard/projects?visibility=public" },
+    { label: "Private", value: priv, href: "/dashboard/projects?visibility=private" },
+    { label: "Drafts", value: draft, href: "/dashboard/projects?visibility=draft" },
+    { label: "Shared projects", value: shared, href: "/dashboard/projects" },
+    { label: "Collaborators", value: collaborators, href: "/dashboard/collaborators" },
+    { label: "Messages received", value: conversations, sub: unread ? `${unread} unread` : undefined, href: "/dashboard/messages" },
+    { label: "Open requests", value: openRequests, href: "/dashboard/requests" },
+    { label: "Open reports", value: openReports, href: "/dashboard/reports" },
   ];
 
   return (
@@ -33,25 +57,28 @@ export default async function DashboardPage() {
           <Link key={s.label} href={s.href} className="rounded-lg border border-line bg-panel p-5 transition hover:border-ink">
             <p className="eyebrow">{s.label}</p>
             <p className="mt-2 font-serif text-4xl">{s.value}</p>
+            {s.sub && <p className="mt-1 text-xs text-accent">{s.sub}</p>}
           </Link>
         ))}
       </div>
 
       <section className="mt-12">
         <div className="flex items-baseline justify-between">
-          <h2 className="font-serif text-xl">Latest messages</h2>
+          <h2 className="font-serif text-xl">Latest conversations</h2>
           <Link href="/dashboard/messages" className="text-sm text-muted hover:text-ink">
             Open inbox →
           </Link>
         </div>
         <ul className="mt-4 divide-y divide-line rounded-lg border border-line bg-panel">
-          {((recent.data ?? []) as Message[]).map((m) => (
-            <li key={m.id} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
-              <div className="min-w-0">
-                <p className={`truncate ${m.is_read ? "" : "font-semibold"}`}>{m.subject}</p>
-                <p className="truncate text-muted">{m.sender_name}</p>
-              </div>
-              <span className="shrink-0 text-xs text-muted">{formatDate(m.created_at)}</span>
+          {((recent.data ?? []) as Conversation[]).map((c) => (
+            <li key={c.id}>
+              <Link href={`/dashboard/messages/${c.id}`} className="flex items-center justify-between gap-4 px-5 py-3 text-sm hover:bg-paper">
+                <div className="min-w-0">
+                  <p className={`truncate ${c.owner_unread ? "font-semibold" : ""}`}>{c.subject}</p>
+                  <p className="truncate text-muted">{c.profiles?.full_name || c.profiles?.email}</p>
+                </div>
+                <span className="shrink-0 text-xs text-muted">{formatDate(c.last_message_at)}</span>
+              </Link>
             </li>
           ))}
           {!recent.data?.length && <li className="px-5 py-6 text-sm text-muted">No messages yet.</li>}

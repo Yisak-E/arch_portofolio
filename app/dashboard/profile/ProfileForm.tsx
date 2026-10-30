@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useActionState, useRef, useState, useTransition } from "react";
 import FormMessage from "@/components/FormMessage";
-import { uploadFile } from "@/components/ImageUploader";
+import { uploadFile } from "@/components/MediaUploader";
 import type { SiteProfile } from "@/lib/types";
 import { saveProfile } from "./actions";
 
@@ -82,6 +82,23 @@ export default function ProfileForm({ profile }: { profile: SiteProfile }) {
           <label className="label" htmlFor="education">Education</label>
           <textarea id="education" name="education" rows={3} defaultValue={profile.education ?? ""} className="input" />
         </div>
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="credentials">Professional credentials</label>
+          <textarea
+            id="credentials"
+            name="credentials"
+            rows={3}
+            defaultValue={profile.credentials ?? ""}
+            placeholder="Awards, memberships, certifications, internships…"
+            className="input"
+          />
+        </div>
+      </section>
+
+      <section className="grid gap-5 rounded-lg border border-line bg-panel p-6 sm:grid-cols-3">
+        <Field label="Public contact email" name="public_email" defaultValue={profile.public_email} />
+        <Field label="Public phone" name="phone" defaultValue={profile.phone} />
+        <Field label="Website" name="website" defaultValue={profile.website} />
       </section>
 
       <section className="grid gap-5 rounded-lg border border-line bg-panel p-6 sm:grid-cols-2">

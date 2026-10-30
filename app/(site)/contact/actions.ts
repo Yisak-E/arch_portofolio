@@ -1,59 +1,43 @@
 "use server";
 
-import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { friendlyError, getSession } from "@/lib/auth";
+import { emailOwner } from "@/lib/email";
 import type { ActionState } from "@/lib/types";
 import { str } from "@/lib/utils";
 
-export async function sendMessage(_prev: ActionState, form: FormData): Promise<ActionState> {
-  const { supabase, user } = await getSession();
+/** FR-010: start a conversation with the owner. */
+export async function startConversation(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, user, profile } = await getSession();
   if (!user) return { error: "Please sign in to send a message." };
+  if (profile?.is_suspended) return { error: "Your account is suspended." };
 
-  const sender_name = str(form, "name", 120);
+  const name = str(form, "name", 120);
   const subject = str(form, "subject", 200);
   const body = str(form, "body", 5000);
   const projectId = str(form, "project_id", 64);
 
-  if (!sender_name || !subject || !body) return { error: "Please fill in your name, a subject and a message." };
+  if (!subject || !body) return { error: "Please add a subject and a message." };
   if (body.length < 10) return { error: "Your message is a little short — add a few more details." };
 
-  const { error } = await supabase.from("messages").insert({
-    sender_id: user.id,
-    sender_name,
-    sender_email: user.email!,
-    subject,
-    body,
-    project_id: projectId || null,
-  });
-
-  if (error) {
-    return {
-      error: error.message.includes("Too many messages")
-        ? "You've sent several messages recently. Please wait a bit before sending another."
-        : "Something went wrong sending your message. Please try again.",
-    };
+  // Keep the user's display name up to date so the owner knows who is writing.
+  if (name && name !== profile?.full_name) {
+    await supabase.from("profiles").update({ full_name: name }).eq("id", user.id);
   }
 
-  await notifyOwner({ sender_name, sender_email: user.email!, subject, body }).catch(() => {
-    // Notification is best-effort; the message is already saved in her inbox.
-  });
+  const { data: conv, error } = await supabase
+    .from("conversations")
+    .insert({ client_id: user.id, subject, project_id: projectId || null })
+    .select("id")
+    .single();
+  if (error) return { error: friendlyError(error.message) };
 
-  return { success: "Thank you — your message was sent. She'll reply to your email." };
-}
+  const { error: msgError } = await supabase
+    .from("conversation_messages")
+    .insert({ conversation_id: conv.id, sender_id: user.id, body });
+  if (msgError) return { error: friendlyError(msgError.message) };
 
-async function notifyOwner(m: { sender_name: string; sender_email: string; subject: string; body: string }) {
-  const key = process.env.RESEND_API_KEY;
-  const to = process.env.OWNER_NOTIFY_EMAIL;
-  if (!key || !to) return;
+  await emailOwner(`New portfolio message: ${subject}`, `From: ${name || user.email} <${user.email}>\n\n${body}`, user.email);
 
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from: process.env.NOTIFY_FROM_EMAIL || "Portfolio <onboarding@resend.dev>",
-      to,
-      reply_to: m.sender_email,
-      subject: `New portfolio message: ${m.subject}`,
-      text: `From: ${m.sender_name} <${m.sender_email}>\n\n${m.body}\n\n— Open your dashboard to see all messages.`,
-    }),
-  });
+  redirect(`/account/messages/${conv.id}?sent=1`);
 }

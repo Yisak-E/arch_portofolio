@@ -57,9 +57,6 @@ export async function requireStaff() {
   return session as SignedIn;
 }
 
-/** @deprecated kept for older imports — use requireStaff. */
-export const requireOwner = requireStaff;
-
 /** Only allow same-site relative redirects (prevents open-redirects via ?next=). */
 export function safeNext(next: unknown, fallback = "/") {
   if (typeof next !== "string") return fallback;

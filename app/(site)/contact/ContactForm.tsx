@@ -2,7 +2,7 @@
 
 import { useActionState, useTransition } from "react";
 import FormMessage from "@/components/FormMessage";
-import { sendMessage } from "./actions";
+import { startConversation } from "./actions";
 
 export default function ContactForm({
   defaultName,
@@ -13,17 +13,8 @@ export default function ContactForm({
   email: string;
   project: { id: string; title: string } | null;
 }) {
-  const [state, action, pending] = useActionState(sendMessage, undefined);
+  const [state, action, pending] = useActionState(startConversation, undefined);
   const [, startTransition] = useTransition();
-
-  if (state?.success) {
-    return (
-      <div className="rounded-lg border border-line bg-panel p-8">
-        <p className="font-serif text-2xl">Message sent</p>
-        <p className="mt-2 text-muted">{state.success}</p>
-      </div>
-    );
-  }
 
   return (
     <form
@@ -33,7 +24,8 @@ export default function ContactForm({
         const data = new FormData(e.currentTarget);
         startTransition(() => action(data));
       }}
-      className="space-y-5 rounded-lg border border-line bg-panel p-6 sm:p-8">
+      className="space-y-5 rounded-lg border border-line bg-panel p-6 sm:p-8"
+    >
       {project && <input type="hidden" name="project_id" value={project.id} />}
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -42,7 +34,7 @@ export default function ContactForm({
           <input id="name" name="name" required defaultValue={defaultName} className="input" />
         </div>
         <div>
-          <label className="label">Reply to</label>
+          <label className="label">Replies go to</label>
           <input value={email} disabled className="input bg-paper text-muted" />
         </div>
       </div>
